@@ -78,3 +78,28 @@ def test_offline_mode(example_path):
     assert all(f.source == "rule" for f in res.findings)
     assert res.verdict.development == "blocked"
     assert "только статические правила" in res.meta["mode"]
+
+
+def test_subsumed_contradiction_is_merged(example_doc):
+    from reqlens.models import Finding, Question
+    from reqlens.pipeline import Auditor
+
+    def mk(uid, lines, reqs, crit="consistent"):
+        return Finding(uid=uid, scope="requirement", criterion=crit, severity="critical", title=uid,
+                       evidence=[example_doc.evidence_for_lines(n) for n in lines], explanation="", recommendation="",
+                       question=Question("business", "?"), req_ids=reqs)
+
+    one_side = mk("A", [38], ["REQ-07"])
+    both = mk("B", [64, 38], ["REQ-16", "REQ-07"])
+    other = mk("C", [39, 40], ["REQ-08", "REQ-09"])
+    gap = mk("D", [38], ["REQ-07"], crit="complete")  # неполнота — не противоречие, не склеивается
+    out = Auditor(None)._merge_subsumed_contradictions([one_side, both, other, gap])
+    assert [f.uid for f in out] == ["B", "C", "D"]
+    assert "A" in both.merged_from
+
+
+def test_display_coverage_ignores_examples_and_headers(example_doc):
+    from reqlens.segmenter import coverage, display_coverage, structural_segment
+
+    reqs = structural_segment(example_doc)
+    assert display_coverage(example_doc, reqs) >= coverage(example_doc, reqs) - 0.05

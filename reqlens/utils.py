@@ -26,7 +26,7 @@ def _git(*args: str) -> str:
 def agent_version() -> Dict[str, str]:
     commit = _git("rev-parse", "--short", "HEAD")
     tag = _git("describe", "--tags", "--exact-match") if commit else ""
-    dirty = bool(_git("status", "--porcelain", "--untracked-files=no")) if commit else False
+    dirty = bool(_git("status", "--porcelain", "--untracked-files=no", "--", ".", ":(exclude)reports")) if commit else False
     label = f"{__product__} {__version__}"
     if tag:
         label += f", тег {tag}"

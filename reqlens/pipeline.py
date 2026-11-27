@@ -39,7 +39,7 @@ from .models import (
     TraceRow,
 )
 from .rules import run_rules
-from .segmenter import coverage, find_requirement, from_llm, number, structural_segment
+from .segmenter import coverage, display_coverage, find_requirement, from_llm, number, structural_segment
 from .utils import agent_version
 from .verdict import build_verdict, fallback_priorities
 
@@ -158,7 +158,7 @@ class Auditor:
 
         self.progress("[3/7] Нарезка на требования")
         reqs = self._segment(doc)
-        cov = coverage(doc, reqs)
+        cov = display_coverage(doc, reqs)
         self.progress(f"      {len(reqs)} требований, покрытие текста {cov:.0%}")
 
         req_findings: List[Finding] = []
@@ -199,6 +199,7 @@ class Auditor:
         else:
             self.progress("[6/7] Ревью находок пропущено")
 
+        findings = self._merge_subsumed_contradictions(findings)
         findings = self._number(findings, reqs)
         uid_to_id = {}
         for f in findings:
@@ -613,6 +614,24 @@ class Auditor:
             else:
                 out.append(f)
         return out
+
+    def _merge_subsumed_contradictions(self, findings: List[Finding]) -> List[Finding]:
+        """Противоречие, все цитаты и требования которого входят в другое противоречие, — его дубль
+        (одну и ту же коллизию модель могла описать с двух сторон)."""
+        cons = [f for f in findings if _FAMILY.get(f.criterion) == "cons"]
+        absorbed = set()
+        for f in sorted(cons, key=lambda x: len({e.line_start for e in x.evidence})):
+            f_lines = {e.line_start for e in f.evidence}
+            for g in cons:
+                if g is f or g.uid in absorbed or f.uid in absorbed:
+                    continue
+                g_lines = {e.line_start for e in g.evidence}
+                if f_lines <= g_lines and len(g_lines) > len(f_lines) and set(f.req_ids) <= set(g.req_ids):
+                    _merge_into(g, f)
+                    absorbed.add(f.uid)
+                    self.stats["merged_auto"] += 1
+                    break
+        return [f for f in findings if f.uid not in absorbed]
 
     def _number(self, findings: List[Finding], reqs: List[Requirement]) -> List[Finding]:
         order = {r.id: i for i, r in enumerate(reqs)}

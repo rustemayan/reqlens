@@ -246,6 +246,33 @@ def coverage(doc: Document, reqs: List[Requirement]) -> float:
     return len([n for n in content if n in covered]) / len(content)
 
 
+def display_coverage(doc: Document, reqs: List[Requirement]) -> float:
+    """Покрытие для отчёта: доля строк с требованиями, без служебной шапки, чек-листа, согласующих,
+    вводной аннотации, заголовков таблиц, примеров JSON/кода и связок вроде «или»."""
+    has_sections = any(ln.section and ln.section != doc.title for ln in doc.lines)
+    content = []
+    for n in doc.content_line_numbers():
+        ln = doc.line(n)
+        sec = ln.section
+        t = ln.text.strip()
+        nxt = doc.line(n + 1).text.strip() if doc.line(n + 1) else ""
+        if _SKIP_SECTIONS.search(sec) or _META_SECTIONS.search(sec):
+            continue
+        if has_sections and sec == doc.title:
+            continue
+        if t.startswith("|") and _SEPARATOR.match(nxt):
+            continue
+        if t.startswith(("{", "[", "```")) or len(_clean(t).split()) < 2:
+            continue
+        content.append(n)
+    if not content:
+        return 1.0
+    covered = set()
+    for r in reqs:
+        covered.update(range(r.line_start, r.line_end + 1))
+    return len([n for n in content if n in covered]) / len(content)
+
+
 def find_requirement(reqs: List[Requirement], line: int) -> Optional[Requirement]:
     best = None
     for r in reqs:
