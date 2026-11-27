@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -r requirements-dev.txt
+      - name: Тесты (без сети и ключей — фейковая модель и локальный HTTP-сервер)
+        run: python -m pytest -q
+      - name: Офлайн-прогон агента на документе организаторов
+        run: python main.py examples/requirements.md reports/ci_offline_report.md --offline
