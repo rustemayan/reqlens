@@ -194,6 +194,9 @@ def render_markdown(res: AuditResult) -> str:
         dur += f" · вызовов LLM: {llm.get('calls', 0)} (из кэша: {llm.get('cached_calls', 0)})"
         if llm.get("input_tokens"):
             dur += f" · токены: {llm['input_tokens']:,} вход / {llm['output_tokens']:,} выход".replace(",", " ")
+        if llm.get("calls") and llm.get("cached_calls") == llm.get("calls"):
+            dur += (" · все ответы модели взяты из кэша предыдущего прогона с теми же промптами и документом "
+                    "(повторный прогон воспроизводит результат без новых запросов; `--no-cache` — анализ заново)")
     w(f"| Длительность анализа | {dur} |")
     w("| Критерии | ISO/IEC/IEEE 29148:2018 п. 5.2.5, 5.2.6; IEEE Std 830-1998 п. 4.3 |")
     w("")
