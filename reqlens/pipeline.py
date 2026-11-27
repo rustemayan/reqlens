@@ -68,6 +68,9 @@ _TO_REQ = {
     "ranked": "necessary",
     "modifiable": "conforming",
 }
+# в матрицу прослеживаемости попадают источники требований, а не строки паспорта API или примеры ответов
+_TRACE_KINDS = {"goal", "functional", "nonfunctional", "integration", "data", "ui", "process"}
+
 _FAMILY = {
     "conforming": "std", "feasible": "std", "set_feasible": "std", "appropriate": "std",
     "consistent": "cons", "set_consistent": "cons", "correct": "cons",
@@ -149,6 +152,7 @@ class Auditor:
         self.progress("[2/7] Статические правила")
         t1 = time.monotonic()
         rule_findings = run_rules(doc)
+        self.stats["rules_fired"] = {f.rule_id: 1 for f in rule_findings}
         self.stages.append(StageLog("Статические правила", time.monotonic() - t1, "ok", f"{len(rule_findings)} находок"))
         self.progress(f"      найдено {len(rule_findings)}")
 
@@ -270,9 +274,15 @@ class Auditor:
                     # гибрид: добавляем структурные единицы для строк, которые модель пропустила
                     added = 0
                     for s in structural_segment(doc):
-                        if not any(not (s.line_end < r.line_start or s.line_start > r.line_end) for r in reqs):
-                            reqs.append(s)
-                            added += 1
+                        if any(not (s.line_end < r.line_start or s.line_start > r.line_end) for r in reqs):
+                            continue
+                        first = (doc.line(s.line_start).text if doc.line(s.line_start) else "").strip()
+                        # дополняем только содержательный текст: служебные строки таблиц, примеры JSON
+                        # и короткие заглушки модель пропустила намеренно
+                        if first.startswith(("|", "{", "[", "curl")) or len(s.quote.split()) < 4:
+                            continue
+                        reqs.append(s)
+                        added += 1
                     if added:
                         reqs = number(reqs)
                         detail += f"; добавлено структурной нарезкой {added} (покрытие моделью было {cov:.0%})"
@@ -397,7 +407,9 @@ class Auditor:
         for row in trace:
             r = by_id.get(row.source)
             row.title = (f"{r.doc_id}: " if r and r.doc_id else "") + (r.summary if r else row.source)
-        trace = [row for row in trace if row.source in by_id]
+        trace = [row for row in trace if row.source in by_id and by_id[row.source].kind in _TRACE_KINDS]
+        seen_src = set()
+        trace = [row for row in trace if not (row.source in seen_src or seen_src.add(row.source))]
         missing = []
         for m in data.get("missing_scenarios") or []:
             if not isinstance(m, dict) or not m.get("scenario"):
@@ -590,7 +602,7 @@ class Auditor:
                 sim = _jaccard(f.title + " " + f.explanation[:200], g.title + " " + g.explanation[:200])
                 if f.source != g.source:
                     # находка LLM целиком внутри строк правила (или наоборот) того же семейства — это та же проблема
-                    ok = sim >= 0.2 or f_lines <= g_lines or g_lines <= f_lines
+                    ok = sim >= 0.2 or ((f_lines <= g_lines or g_lines <= f_lines) and sim >= 0.08)
                 else:
                     ok = f.primary_req == g.primary_req and _jaccard(f.title, g.title) >= 0.6
                 if ok and sim > best:
@@ -622,13 +634,16 @@ def _merge_into(target: Finding, other: Finding) -> None:
     if SEVERITY_RANK.get(other.severity, 9) < SEVERITY_RANK.get(target.severity, 9):
         target.severity = other.severity
     if target.source == "rule" and other.source == "llm":
-        # заголовок правила точен; объяснение, рекомендация и вопрос LLM привязаны к документу — берём их
-        if len(other.explanation) > len(target.explanation):
-            target.explanation = other.explanation
-        if other.recommendation and len(other.recommendation) > len(target.recommendation):
-            target.recommendation = other.recommendation
-        if other.question:
-            target.question = other.question
+        # заголовок и вопрос правила точны; конкретику LLM берём, только если она про то же самое
+        if _jaccard(target.title + " " + target.explanation, other.title + " " + other.explanation) >= 0.15:
+            if len(other.explanation) > len(target.explanation):
+                target.explanation = other.explanation
+            if other.recommendation and len(other.recommendation) > len(target.recommendation):
+                target.recommendation = other.recommendation
+        target.source = "rule+llm"
+    elif other.rule_id and not target.rule_id:
+        # находку правила поглотила находка LLM — сохраняем след правила
+        target.rule_id = other.rule_id
         target.source = "rule+llm"
     for e in other.evidence:
         if not any(x.line_start == e.line_start for x in target.evidence):

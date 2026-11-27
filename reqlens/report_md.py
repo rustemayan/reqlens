@@ -460,11 +460,11 @@ def render_markdown(res: AuditResult) -> str:
     w("")
     w("**Статические правила**")
     w("")
-    fired = Counter(f.rule_id for f in findings if f.rule_id)
+    fired = res.stats.get("rules_fired") or Counter(f.rule_id for f in findings if f.rule_id)
     w("| Правило | Что ищет | Сработало |")
     w("| :--- | :--- | :---: |")
     for rid, desc in RULE_DESCRIPTIONS.items():
-        w(f"| {rid} | {desc} | {fired.get(rid, 0) or '—'} |")
+        w(f"| {rid} | {desc} | {'да' if fired.get(rid) else '—'} |")
     w("")
 
     w("## Приложение B. Журнал прогона")

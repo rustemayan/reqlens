@@ -158,7 +158,7 @@ class FakeProvider(Provider):
             if block and "REST type" in block.group(1):
                 for r in results:
                     if r["req_id"] == rid:
-                        r["findings"].append(_f("conforming", "critical", "Метод GET используется для изменения настройки порога",
+                        r["findings"].append(_f("conforming", "critical", "Метод GET используется для изменяющей операции сохранения порога",
                                                 [("REST type | GET", 104)], q_to="architect",
                                                 q="Меняем GET на PUT /alerts/limit?"))
         return {"results": results}

@@ -27,6 +27,7 @@ def test_full_pipeline_with_fake_llm(tmp_path, example_path):
     get = [f for f in res.findings if f.rule_id == "R06"]
     assert len(get) == 1 and get[0].source == "rule+llm"
     assert not any("Метод GET используется" in t for t in titles)
+    assert get[0].question.text.startswith("Подтверждаете замену метода")  # вопрос правила сохранён
     # противоречия найдены и цитаты привязаны к строкам
     contra = next(f for f in res.findings if "Ф-4" in f.title)
     assert {e.line_start for e in contra.evidence} == {39, 40}
