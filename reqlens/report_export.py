@@ -69,7 +69,17 @@ def write_html(markdown_text: str, path, title: str) -> bool:
         import markdown  # type: ignore
     except ImportError:
         return False
-    body = markdown.markdown(markdown_text, extensions=["tables", "sane_lists"], output_format="html5")
+    try:
+        body = markdown.markdown(
+            markdown_text,
+            extensions=["markdown.extensions.tables", "markdown.extensions.sane_lists"],
+            output_format="html5",
+        )
+    except Exception as exc:  # HTML — дополнительный формат, его сбой не должен ронять прогон
+        import logging
+
+        logging.getLogger("reqlens").warning("HTML-версия отчёта не создана: %s", exc)
+        return False
     nav = ('<div class="toolbar"><a href="#top">↑ Наверх</a>'
            '<a href="#s1">Паспорт</a><a href="#s2">Нарезка</a><a href="#s3">Требования</a>'
            '<a href="#s4">Набор</a><a href="#s5">Сводка</a><a href="#s6">Итог</a><a href="#s7">Вопросы</a></div>')
